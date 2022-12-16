@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link rel="stylesheet" href="/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+    <div id="main_app">
+        
+
+        <nav class="navbar navbar-light bg-light shadow-sm p-3 mb-5 bg-white rounded" style="margin: 0!important; background-color: rgb(164 124 163)!important; border-radius: 0!important;">
+            <span class="navbar-brand mb-0 h1">ChatCripto: {{login}} </span>
+        </nav>
+        <div class="container-xxl" id="chat" style="display: none; margin: 0;">
+
+            <div>
+                <div class="row" style="margin: 0;">
+                    <div class="col-2" style=" height: 90vh; padding: 0; ">
+                        <select id="listusers" v-model="selectedUsers" class="form-select" multiple>
+                            <option v-for="(user, index) in listaUsers" v-bind:value="index"> {{ user.login }}</option>
+                        </select>
+                    </div>
+                    <div class="col-10" style="margin-top: 40px;">
+                        <ul id="messages">
+                            <li v-for="msg in listMessages">
+                                <span v-if="msg.type == 'text'">{{ msg.message }}</span>
+                                <img class="imagesize" v-if="msg.type == 'file'" v-bind:src="msg.message">
+                            </li>
+                        </ul>
+                        <div id="form" action="" style="margin:0;">
+                            <input id="input" autocomplete="off" v-model="message" @keyup.enter="sendMessage()" />
+
+                            <input type="file" id="avatar" @change="uploadFile" ref="file" name="avatar" accept="image/png, image/jpeg">
+
+                            <button @click="sendMessage()" type="button">Send</button>
+                        </div>
+
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
+    <script src="/js/jsencrypt.min.js"></script>
+
+    <script src="http://crypto-js.googlecode.com/svn/tags/3.1.2/build/rollups/aes.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.2/components/core-min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.2/components/sha256.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.2/rollups/aes.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.2/rollups/pbkdf2.js"></script>
+
+    <script>
+
+
+        var app = new Vue({
+            el: '#main_app',
+            data: {
+                socket: null,
+                login: '',
+                privateKey: '',
+                publicKey: '',
+
+                selectedUsers: [],
+                listaUsers: [], // nome chave puv, chave sync
+
+                message: '',
+                image: null,
+                listMessages: []
+            },
+            methods: {
+
+                // Conversor para base64
+                toBase64(file) {
+                    return new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.readAsDataURL(file);
+                        reader.onload = () => resolve(reader.result);
+                        reader.onerror = error => reject(error);
+                    })
+                },
+
+                // Usando para converter imagem selecionada a base64
+                async uploadFile() {
+                    this.image = this.$refs.file.files[0];
+
+
+                    this.image = await this.toBase64(this.image);
+
+
+                },
+
+                // Metodo de enviar mensagem
+                sendMessage: function () {
+
+
+                    var destinatarios;
+
+                    // Verifica se não há usuários expecificos selecionados
+                    if (this.selectedUsers.length == 0) {
+                        // Correto, destinatarios serão todos os usuários conectados 
+                        destinatarios = this.listaUsers;
+                    }
+                    else {
+                        // Incorreto, destinatarios serão os usuários expecificos selecionados
+                        destinatarios = this.selectedUsers;
+                    }
+
+                    // Percorre todos os destinatarios
+                    for (const index of destinatarios) {
+
+                        // Pega dados de um usuário por vez
+                        const user = this.listaUsers[index];
+
+                        if (user.login == this.login) {
+                            continue
+                        }
+
+
+                        // Verifica se campo mensagem está vazio
+                        if (this.message != '') {
+                            // Correto, encripta a mensagem com chave simetrica do destinatario e faz uma Hash da mensagem
+                            var encrypted_message = CryptoJS.AES.encrypt(this.message, user.asynckey);
+                            var hash_message = CryptoJS.SHA256(this.message);
+                            // Printa a mensagem em seu proprio chat
+                            app.listMessages.push({ message: this.message, type: 'text' })
+                        }
+                        
+                        // Verifica há uma imagem selecionada
+                        if (this.image != null) {
+                            // Correto, encripta a imagem com chave simetrica do destinatario e faz uma Hash da Imagem
+                            var encrypted_image = CryptoJS.AES.encrypt(this.image, user.asynckey);
+                            var hash_image = CryptoJS.SHA256(this.image);
+
+                            // Printa a imagem em seu proprio chat
+                            app.listMessages.push({ message: this.image, type: 'file' })
+                        }
+
+
+                        // Envia a mensagem para servidor
+                        this.socket.emit('message', {
+                            message: encrypted_message.toString(),
+                            file: encrypted_image.toString(),
+                            remetente: app.login,
+                            destinatario: user.login,
+                            hash_message: hash_message.toString(),
+                            hash_image: hash_image.toString()
+                        });
+
+                    }
+
+                    // Reseta campo mensagem
+                    this.message = '';
+
+                },
+
+            }
+        })
+
+        do {
+            app.login = prompt("Inicio?");
+        } while (app.login == "");
+
+        // Verifica se usuário conectou
+        if (app.login != null) {
+
+            var keySize = 512;
+            var crypt = new JSEncrypt({ default_key_size: keySize });
+
+            crypt.getKey();
+
+            // Gera chave privada e publica
+            app.privateKey = crypt.getPrivateKey();
+            app.publicKey = crypt.getPublicKey();
+
+            app.socket = io();
+
+            // Exibe lista lateral
+            document.getElementById('chat').style.display = "block";
+
+            // Emite a conexão para servidor
+            app.socket.on('connect', function () {
+                app.socket.emit('ehlo', { login: app.login, publicKey: app.publicKey });
+            });
+        }
+
+
+        app.socket.on('list users', function (data) {
+
+            // Verifica se é a primeira conexão do usuário
+            if (app.listaUsers.length == 0) {
+                // Correto, adiciona os usuários a lista privada do usuário
+
+                app.listaUsers = data;
+                var salt = CryptoJS.lib.WordArray.random(128 / 8);
+
+                // Percorre a lista de usuários conectados
+                for (let index = 0; index < data.length; index++) {
+
+                    // Verifica se não é si próprio
+                    if (data[index].login != app.login) {
+
+                        // Gera chave simétrica
+                        var key = CryptoJS.PBKDF2(new Date().getUTCMilliseconds().toString(), salt, {
+                            keySize: 2,
+                            iterations: 100
+                        });
+
+
+                        var encrypt = new JSEncrypt();
+                        encrypt.setPublicKey(data[index].publicKey);
+
+                        // Encripta chave simétrica de comunicação com outro usuário
+                        var encrypted = encrypt.encrypt(key.toString());
+                        console.log('ENCRIPTADO: ' + encrypted);
+
+                        // Adiciona chave simétrica de comunicação com o usuário a sua lista privada
+                        app.listaUsers[index].asynckey = key.toString();
+
+
+                        // Envia chave simétrica criptografada ao servidor para que ele envie ao outro usuário
+                        app.socket.emit('chave', { remetente: app.login, destinatario: data[index].login, sync: encrypted });
+
+                    }
+
+
+                }
+
+            } else {
+                app.listaUsers.push(data[data.length - 1])
+            }
+
+
+        });
+
+
+        // Recebe chave simétrica de outro usuário
+        app.socket.on('chave@' + app.login, function (msg) {
+
+            //  Console para verificação
+            console.log('O ' + 'Remetente: ' + msg.remetente + ' ENVIOU A CHAVE: ' + msg.sync + ' PARA ' + msg.destinatario);
+
+            // Percore a lista privada de usuários conectados
+            for (let index = 0; index < app.listaUsers.length; index++) {
+
+                // Verifica se não é si próprio
+                if (app.listaUsers[index].login == msg.remetente) {
+
+                    var encrypt = new JSEncrypt();
+
+                    encrypt.setPrivateKey(app.privateKey);
+
+                    // Decripta chave simétrica recebida
+                    var decrypted = encrypt.decrypt(msg.sync);
+
+                    // Adiciona chave simétrica do remetente a sua lista privada
+                    app.listaUsers[index].asynckey = decrypted;
+                }
+
+            }
+            // recber a chave
+            // descirpfrar com priv
+            // salvar na lista [login]
+        })
+
+
+        // Recebe mensagem
+        app.socket.on('message@' + app.login, function (data) {
+
+            // Percorre lista privada de usuários
+            for (let index = 0; index < app.listaUsers.length; index++) {
+
+                // Verifica se não é si próprio
+                if (app.listaUsers[index].login == data.remetente) {
+
+                    // Verifica se á alguma mensagem
+                    if (data.message) {
+
+                        // Correto, decripta a mensagem com a chave simétrica do remetente
+                        var decrypted_message = CryptoJS.AES.decrypt(data.message, app.listaUsers[index].asynckey);
+                        var message = decrypted_message.toString(CryptoJS.enc.Utf8);
+
+                        var hash_message = CryptoJS.SHA256(message).toString();
+                        console.log("HASH MESSAGE ORIGIN: ", hash_message)
+                        console.log("HASH MESSAGE NEW: ", data.hash_message)
+
+                        // Verifica a hash
+                        if (hash_message == data.hash_message) {
+                            // Correto, printa e mensagem
+                            app.listMessages.push({ message, type: 'text' })
+                        } else {
+                            // Incorreto, mensagem de erro
+                            app.listMessages.push({ message: 'A mensagem foi corrompida, peça que enviem novamente', type: 'text' })
+                        }
+
+
+                    }
+
+                    // Verifica se há algum arquivo
+                    if (data.file) {
+                        // Correto, decripta o arquivo
+                        var decrypted_image = CryptoJS.AES.decrypt(data.file, app.listaUsers[index].asynckey);
+                        var message = decrypted_image.toString(CryptoJS.enc.Utf8);
+
+                        var hash_image = CryptoJS.SHA256(message).toString();
+
+                        console.log("HASH IMAGE ORIGIN: ", hash_image)
+                        console.log("HASH IMAGE NEW: ", data.hash_image)
+
+                        // Verifica a hash                       
+                        if (hash_image == data.hash_image) {
+                            // Correto, printa o arquivo
+                            app.listMessages.push({ message, type: 'file' })
+                        } else {
+                            // Incorreto, mensagem de erro
+                            app.listMessages.push({ message: 'A mensagem foi corrompida, peça que enviem novamente', type: 'text' })
+                        }
+
+
+                    }
+
+                }
+
+            }
+        })
+
+
+    </script>
+</body>
+
+</html>

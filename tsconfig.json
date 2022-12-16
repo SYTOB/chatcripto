@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "skipLibCheck": true,
+    "target": "es2017",
+    "module": "commonjs",
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "lib": [
+      "ES6",
+      "DOM"
+    ],
+    "strict": true,
+    "esModuleInterop": true
+  },
+  "include": [
+    "src/**/*"
+, "routes.ts", "src/index.ts"  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

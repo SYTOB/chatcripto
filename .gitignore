@@ -1,0 +1,12 @@
+# Node modules
+node_modules
+
+
+# Tmp files
+dist
+sessions
+tokens
+log
+
+# Environment variables, never commit this file
+.env
